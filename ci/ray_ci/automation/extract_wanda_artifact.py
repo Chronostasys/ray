@@ -22,8 +22,8 @@ from ci.ray_ci.utils import ecr_docker_login, logger
 @click.option(
     "--file-glob",
     type=str,
-    default="*.tgz",
-    help="Glob pattern for files to extract (default: '*.tgz').",
+    required=True,
+    help="Glob pattern for files to extract (e.g. '*.whl', '*.tgz').",
 )
 @click.option(
     "--output-dir",

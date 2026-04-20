@@ -23,6 +23,7 @@ def _invoke(args, crane_side_effect):
 def _base_args(**overrides):
     defaults = {
         "--wanda-image-name": "test-image",
+        "--file-glob": "*.tgz",
         "--rayci-work-repo": "ecr.example.com/repo",
         "--rayci-build-id": "build-123",
     }
@@ -86,6 +87,19 @@ class TestExtraction:
             assert result.exit_code == 0, result.output
             assert (Path(outdir) / "ray.whl").exists()
             assert not (Path(outdir) / "ray.tgz").exists()
+
+    def test_missing_file_glob_errors(self):
+        args = [
+            "--wanda-image-name",
+            "test-image",
+            "--rayci-work-repo",
+            "ecr.example.com/repo",
+            "--rayci-build-id",
+            "build-123",
+        ]
+        result = _invoke(args, lambda tag, d: None)
+        assert result.exit_code != 0
+        assert "--file-glob" in result.output
 
     def test_creates_output_dir(self):
         def export(tag, d):

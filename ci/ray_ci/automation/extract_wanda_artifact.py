@@ -1,0 +1,88 @@
+"""
+Extract globs from a Wanda-cached image to a local directory.
+"""
+
+import shutil
+import tempfile
+from pathlib import Path
+
+import click
+
+from ci.ray_ci.automation.crane_lib import call_crane_export
+from ci.ray_ci.utils import ecr_docker_login, logger
+
+
+@click.command()
+@click.option(
+    "--wanda-image-name",
+    type=str,
+    required=True,
+    help="Wanda image name (without repo/build-id prefix).",
+)
+@click.option(
+    "--file-glob",
+    type=str,
+    default="*.tgz",
+    help="Glob pattern for files to extract (default: '*.tgz').",
+)
+@click.option(
+    "--output-dir",
+    type=str,
+    default=".",
+    help="Directory to place extracted files (default: current directory).",
+)
+@click.option(
+    "--rayci-work-repo",
+    type=str,
+    envvar="RAYCI_WORK_REPO",
+    required=True,
+    help="RAYCI work repository URL.",
+)
+@click.option(
+    "--rayci-build-id",
+    type=str,
+    envvar="RAYCI_BUILD_ID",
+    required=True,
+    help="RAYCI build ID.",
+)
+def main(
+    wanda_image_name: str,
+    file_glob: str,
+    output_dir: str,
+    rayci_work_repo: str,
+    rayci_build_id: str,
+) -> None:
+    """Extract artifacts matching a glob pattern from a Wanda-cached image."""
+    wanda_image = f"{rayci_work_repo}:{rayci_build_id}-{wanda_image_name}"
+    logger.info(f"Extracting '{file_glob}' from: {wanda_image}")
+
+    ecr_registry = rayci_work_repo.split("/")[0]
+    ecr_docker_login(ecr_registry)
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        call_crane_export(wanda_image, tmpdir)
+        matches = list(Path(tmpdir).rglob(file_glob))
+        if not matches:
+            raise click.ClickException(
+                f"No files matching '{file_glob}' in image {wanda_image}"
+            )
+        seen = set()
+        for f in matches:
+            if f.name in seen:
+                raise click.ClickException(
+                    f"Duplicate basename '{f.name}' in image {wanda_image}: "
+                    f"found at multiple paths"
+                )
+            seen.add(f.name)
+            dest = output_path / f.name
+            shutil.copy2(f, dest)
+            logger.info(f"  {f.name} ({f.stat().st_size} bytes)")
+
+    logger.info(f"Extracted {len(seen)} file(s) to {output_path}")
+
+
+if __name__ == "__main__":
+    main()
